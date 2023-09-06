@@ -9,9 +9,11 @@ from flask_cors import CORS
 from utils import APIException, generate_sitemap
 from admin import setup_admin
 from models import db, User, Character, Planet, Favorite
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
 
 
 app = Flask(__name__)
+jwt = JWTManager(app)
 app.url_map.strict_slashes = False
 
 db_url = os.getenv("DATABASE_URL")
@@ -36,14 +38,6 @@ def handle_invalid_usage(error):
 def sitemap():
     return generate_sitemap(app)
 
-@app.route('/user', methods=['GET'])
-def handle_hello():
-
-    response_body = {
-        "msg": "Hello, this is your GET /user response "
-    }
-
-    return jsonify(response_body), 200
 
 # Route to get information about all characters (people)
 @app.route('/people', methods=['GET'])
@@ -78,23 +72,30 @@ def get_planet(planet_id):
 def get_users():
     users = User.query.all()
     results = [user.serialize() for user in users]
-    return jsonify(results), 200
+    
+    access_token = create_access_token(identity=get_jwt_identity())
+    response_body = {
+        "access_token": access_token,
+        "users": results
+    }
+    return jsonify(response_body), 200
 
 # Route to get all the favorites that belong to a current user
 @app.route('/users/favorites', methods=['GET'])
+@jwt_required()
 def get_user_favorites():
-    
-    user_id = get_current_user_id()
+    user_id = get_jwt_identity()
 
     favorites = Favorite.query.filter_by(user_id=user_id).all()
     serialized_favorites = [favorite.serialize() for favorite in favorites]
-    
+
     return jsonify(serialized_favorites), 200
 
 # Route [POST] /favorite/planet/<int:planet_id> Add a new favorite planet to the current user with the planet id = planet_id
 @app.route('/favorite/planet/<int:planet_id>', methods=['POST'])
+@jwt_required()
 def add_favorite_planet(planet_id):
-    user_id = session.get('user_id')
+    user_id = get_jwt_identity()
     if user_id is None:
         return jsonify({"message": "User not authenticated"}), 401
     
@@ -116,8 +117,9 @@ def add_favorite_planet(planet_id):
 
 # Route [POST] /favorite/people/<int:people_id> Add new favorite people to the current user with the people id = people_id
 @app.route('/favorite/people/<int:people_id>', methods=['POST'])
+@jwt_required()
 def add_favorite_people(people_id):
-    user_id = session.get('user_id')
+    user_id = get_jwt_identity()
     if user_id is None:
         return jsonify({"message": "User not authenticated"}), 401
     
@@ -141,8 +143,9 @@ def add_favorite_people(people_id):
 
 # Route to delete favorite planet with the id = planet_id
 @app.route('/favorite/planet/<int:planet_id>', methods=['DELETE'])
+@jwt_required()
 def delete_favorite_planet(planet_id):
-    user_id = session.get('user_id')
+    user_id = get_jwt_identity()
     if user_id is None:
         return jsonify({"message": "User not authenticated"}), 401
 
@@ -157,8 +160,9 @@ def delete_favorite_planet(planet_id):
 
 # Route to delete favorite character with the id = people_id
 @app.route('/favorite/people/<int:people_id>', methods=['DELETE'])
+@jwt_required()
 def delete_favorite_character(people_id):
-    user_id = session.get('user_id')
+    user_id = get_jwt_identity()
     if user_id is None:
         return jsonify({"message": "User not authenticated"}), 401
 
@@ -170,6 +174,14 @@ def delete_favorite_character(people_id):
         return jsonify({"message": "Favorite character deleted"}), 200
     else:
         return jsonify({"message": "Favorite character not found"}), 404
+
+
+@app.route('/token', methods=['GET'])
+@jwt_required()
+def get_token():
+    user_id = get_jwt_identity()
+    access_token = create_access_token(identity=user_id)
+    return jsonify({"access_token": access_token}), 200
 
 
 # this only runs if `$ python src/app.py` is executed
