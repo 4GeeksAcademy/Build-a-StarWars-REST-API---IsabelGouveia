@@ -9,7 +9,10 @@ from flask_cors import CORS
 from utils import APIException, generate_sitemap
 from admin import setup_admin
 from models import db, User, Character, Planet, Favorite
-from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import jwt_required
+from flask_jwt_extended import JWTManager
 
 
 app = Flask(__name__)
@@ -41,6 +44,7 @@ def sitemap():
 
 # Route to get information about all characters (people)
 @app.route('/people', methods=['GET'])
+@jwt_required()
 def get_people():
     characters = Character.query.all()
     results = [character.serialize() for character in characters]
@@ -48,6 +52,7 @@ def get_people():
 
 # Route to get information about a specific character (people)
 @app.route('/people/<int:character_id>', methods=['GET'])
+@jwt_required()
 def get_character(character_id):
     character = Character.query.get(character_id)
     if character:
@@ -55,6 +60,7 @@ def get_character(character_id):
 
 # Route to get information about all planets 
 @app.route('/planet', methods=['GET'])
+@jwt_required()
 def get_planets():
     planets = Planet.query.all()
     results = [planet.serialize() for planet in planets]
@@ -62,6 +68,7 @@ def get_planets():
 
 # Route to get information about a specific planet
 @app.route('/planet/<int:planet_id>', methods=['GET'])
+@jwt_required()
 def get_planet(planet_id):
     planet = Planet.query.get(planet_id)
     if planet:
@@ -69,6 +76,7 @@ def get_planet(planet_id):
     
 # Route to get information about all users
 @app.route('/users', methods=['GET'])
+@jwt_required()
 def get_users():
     users = User.query.all()
     results = [user.serialize() for user in users]
@@ -91,7 +99,7 @@ def get_user_favorites():
 
     return jsonify(serialized_favorites), 200
 
-# Route [POST] /favorite/planet/<int:planet_id> Add a new favorite planet to the current user with the planet id = planet_id
+# Route [POST] /favorite/planet/<int:planet_id> 
 @app.route('/favorite/planet/<int:planet_id>', methods=['POST'])
 @jwt_required()
 def add_favorite_planet(planet_id):
@@ -115,7 +123,7 @@ def add_favorite_planet(planet_id):
     
     return jsonify({"message": "Favorite planet added"}), 201
 
-# Route [POST] /favorite/people/<int:people_id> Add new favorite people to the current user with the people id = people_id
+# Route [POST] /favorite/people/<int:people_id> 
 @app.route('/favorite/people/<int:people_id>', methods=['POST'])
 @jwt_required()
 def add_favorite_people(people_id):
@@ -176,13 +184,31 @@ def delete_favorite_character(people_id):
         return jsonify({"message": "Favorite character not found"}), 404
 
 
-@app.route('/token', methods=['GET'])
-@jwt_required()
-def get_token():
-    user_id = get_jwt_identity()
-    access_token = create_access_token(identity=user_id)
-    return jsonify({"access_token": access_token}), 200
 
+@app.route('/token', methods=['POST'])
+def create_token():
+    email = request.json.get("email", None)
+    password = request.json.get("password", None)
+    user = User.query.filter_by(email=email, password=password).first()
+
+    if user is None:
+        return jsonify("Invalid credentials"), 401
+
+    access_token = create_access_token(identity=user.id)
+    return jsonify(access_token=access_token), 200
+
+# Route to create user 
+@app.route('/register', methods=['POST'])
+def create_user():
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
+    
+    new_user = User(email=email, password=password)
+    db.session.add(new_user)
+    db.session.commit()
+    
+    return jsonify("User registered successfully"), 200
 
 # this only runs if `$ python src/app.py` is executed
 if __name__ == '__main__':
